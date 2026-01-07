@@ -35,16 +35,28 @@ STEP 2: Download Market Data
   - `binance_december_data/ETHUSDT/` contains 31 CSV files
   - `binance_december_data/BNBUSDT/` contains 31 CSV files
 
-STEP 3: Verify Complete Setup
+STEP 3: Run Backtesting
+- Run `python backtesting.py` to execute the backtesting engine
+- This will process all 31 days of data and generate results
+- The script will create the `result/` folder automatically
+- Wait for completion (this may take 1-2 minutes)
+- Verify that results were generated:
+  - `result/all_trades_per_day.csv` exists
+  - `result/daily_results_summary.csv` exists
+
+STEP 4: Verify Complete Setup
 - Confirm `binance_december_data/` folder was created with subdirectories (created automatically by pull_data.py)
+- Confirm `result/` folder was created with CSV files (created automatically by backtesting.py)
 - Confirm `.venv/` folder exists
 - Confirm all dependencies are installed
-- Note: `result/` folder will be created automatically when running backtesting.py
 
-STEP 4: Final Confirmation
+STEP 5: Final Confirmation
 - Once all steps are complete, inform me:
-  - "Setup complete! You can now run: python backtesting.py"
-  - Provide a summary of what was created/downloaded
+  - "Setup complete! Project is ready to use."
+  - Provide a summary of what was created/downloaded:
+    - Number of data files downloaded
+    - Backtesting results generated
+    - Location of result files
 
 Please execute these steps sequentially and provide status updates after each step. If any step fails, stop and inform me of the error.
 ```
@@ -57,13 +69,15 @@ When you paste this prompt into Cursor, it will:
 - ✅ Set up Python virtual environment
 - ✅ Install all dependencies
 - ✅ Download all required market data (93 files) - folders created automatically
+- ✅ Run backtesting to generate results - result folder created automatically
 - ✅ Verify everything is set up correctly
 
 Note: Folders (`binance_december_data/` and `result/`) are created automatically by the scripts, so no manual folder creation is needed.
 
-After setup completes, you can immediately run:
-```bash
-python backtesting.py
-```
+After setup completes, the project is fully ready:
+- Data is downloaded
+- Backtesting has been run
+- Results are available in `result/` folder
+- You can run `python check_30day.py` to analyze compounding returns
 
 No manual steps required!
