@@ -1,10 +1,16 @@
-"""Backtesting module for cryptocurrency trading with perfect knowledge."""
+"""
+Optimal Backtesting using Dynamic Programming
+
+This module finds the globally optimal sequence of trades for cryptocurrency
+trading with perfect knowledge of future prices.
+
+Time Complexity: O(N² × M) where N = minutes per day, M = number of tickers
+Space Complexity: O(N² × M) for storing all possible trades
+"""
 from datetime import date, timedelta
 from pathlib import Path
 
 import pandas as pd
-
-from load_data import load_data
 
 
 def daterange(start_date, end_date):
@@ -40,35 +46,16 @@ def load_day_data(data_dir, trading_date):
     return day_data
 
 
-def precompute_suffix_arrays(ticker_events):
-    """Precompute suffix max and min arrays for future price lookups."""
-    n = len(ticker_events)
-    if n == 0:
-        return [], []
-    
-    suffix_max = [0.0] * n
-    suffix_min = [float('inf')] * n
-    
-    suffix_max[n - 1] = 0.0
-    suffix_min[n - 1] = float('inf')
-    
-    for i in range(n - 2, -1, -1):
-        next_price = ticker_events[i + 1]['close']
-        suffix_max[i] = max(next_price, suffix_max[i + 1])
-        suffix_min[i] = min(next_price, suffix_min[i + 1])
-    
-    return suffix_max, suffix_min
-
-
-def max_profit_per_day(day_data, initial_balance=10000, target=1000000):
+def find_all_trades(day_data):
     """
-    Calculate maximum profit for a single day with Long/Short positions.
-    Uses perfect knowledge to find optimal trades across all assets.
-    """
-    balance = initial_balance
-    trades = []
-    positions = {ticker: [] for ticker in day_data.keys()}
+    Find all possible profitable trades across all tickers.
     
+    Time Complexity: O(N² × M) where N = minutes, M = tickers
+    
+    Returns:
+        trades: List of all possible profitable trades
+        all_events: Sorted list of all price events
+    """
     all_events = []
     for ticker, df in day_data.items():
         for idx, row in df.iterrows():
@@ -76,253 +63,240 @@ def max_profit_per_day(day_data, initial_balance=10000, target=1000000):
                 'ticker': ticker,
                 'idx': idx,
                 'time': row['open_time'],
-                'open': row['open'],
-                'high': row['high'],
-                'low': row['low'],
                 'close': row['close']
             })
     
     all_events.sort(key=lambda x: x['time'])
     
-    ticker_events = {}
-    for ticker in day_data.keys():
-        ticker_events[ticker] = [e for e in all_events if e['ticker'] == ticker]
+    ticker_events = {ticker: [] for ticker in day_data.keys()}
+    for global_idx, event in enumerate(all_events):
+        ticker_events[event['ticker']].append((global_idx, event))
     
-    ticker_time_to_idx = {}
+    trades = []
+    
     for ticker, events in ticker_events.items():
-        ticker_time_to_idx[ticker] = {e['time']: i for i, e in enumerate(events)}
-    
-    ticker_suffix_max = {}
-    ticker_suffix_min = {}
-    for ticker, events in ticker_events.items():
-        suffix_max, suffix_min = precompute_suffix_arrays(events)
-        ticker_suffix_max[ticker] = suffix_max
-        ticker_suffix_min[ticker] = suffix_min
-    
-    for i, event in enumerate(all_events):
-        ticker = event['ticker']
-        current_price = event['close']
-        current_time = event['time']
-        
-        positions_to_close = []
-        for pos_idx, (entry_price, quantity, pos_type, _, _) in enumerate(
-            positions[ticker]
-        ):
-            should_close = False
-            profit = 0
+        n = len(events)
+        for i in range(n):
+            entry_global_idx, entry_event = events[i]
+            entry_price = entry_event['close']
             
-            current_ticker_idx = ticker_time_to_idx[ticker].get(current_time)
-            
-            if current_ticker_idx is not None and current_ticker_idx < len(ticker_events[ticker]) - 1:
-                max_future_price = ticker_suffix_max[ticker][current_ticker_idx]
-                min_future_price = ticker_suffix_min[ticker][current_ticker_idx]
+            for j in range(i + 1, n):
+                exit_global_idx, exit_event = events[j]
+                exit_price = exit_event['close']
                 
-                if pos_type == 'LONG':
-                    if (current_price >= max_future_price or
-                            balance + quantity * current_price >= target):
-                        profit = quantity * (current_price - entry_price)
-                        should_close = True
-                elif pos_type == 'SHORT':
-                    short_profit = quantity * (entry_price - current_price)
-                    if (current_price <= min_future_price or
-                            balance + quantity * entry_price + short_profit >= target):
-                        profit = short_profit
-                        should_close = True
-            else:
-                if pos_type == 'LONG':
-                    profit = quantity * (current_price - entry_price)
-                else:
-                    profit = quantity * (entry_price - current_price)
-                should_close = True
-            
-            if should_close:
-                if pos_type == 'LONG':
-                    balance += quantity * current_price
-                else:
-                    balance += quantity * entry_price + profit
-                
-                trades.append({
-                    'ticker': ticker,
-                    'time': current_time,
-                    'minute': i,
-                    'action': f'CLOSE_{pos_type}',
-                    'entry_price': entry_price,
-                    'exit_price': current_price,
-                    'quantity': quantity,
-                    'profit_loss': profit,
-                    'balance_after': balance
-                })
-                positions_to_close.append(pos_idx)
-        
-        for pos_idx in sorted(positions_to_close, reverse=True):
-            positions[ticker].pop(pos_idx)
-        
-        if balance >= target:
-            for ticker_pos in positions.values():
-                for entry_price, quantity, pos_type, _, _ in ticker_pos:
-                    if pos_type == 'LONG':
-                        balance += quantity * current_price
-                    elif pos_type == 'SHORT':
-                        profit = quantity * (entry_price - current_price)
-                        balance += quantity * entry_price + profit
-            break
-        
-        if balance > 0:
-            best_opportunity = None
-            best_return = 0
-            
-            for check_ticker in day_data.keys():
-                current_ticker_idx = ticker_time_to_idx[check_ticker].get(current_time)
-                
-                if (current_ticker_idx is not None and
-                        current_ticker_idx < len(ticker_events[check_ticker]) - 1):
-                    ticker_price = ticker_events[check_ticker][current_ticker_idx]['close']
-                    
-                    max_future_price = ticker_suffix_max[check_ticker][current_ticker_idx]
-                    min_future_price = ticker_suffix_min[check_ticker][current_ticker_idx]
-                    
-                    if max_future_price > ticker_price:
-                        long_return = (max_future_price - ticker_price) / ticker_price
-                        if long_return > best_return:
-                            best_return = long_return
-                            best_opportunity = {
-                                'ticker': check_ticker,
-                                'price': ticker_price,
-                                'type': 'LONG',
-                                'exit_price': max_future_price,
-                                'return': long_return,
-                                'time': current_time
-                            }
-                    
-                    if min_future_price < ticker_price:
-                        short_return = (ticker_price - min_future_price) / ticker_price
-                        if short_return > best_return:
-                            best_return = short_return
-                            best_opportunity = {
-                                'ticker': check_ticker,
-                                'price': ticker_price,
-                                'type': 'SHORT',
-                                'exit_price': min_future_price,
-                                'return': short_return,
-                                'time': current_time
-                            }
-            
-            if best_opportunity and best_return > 0:
-                opp_ticker = best_opportunity['ticker']
-                opp_price = best_opportunity['price']
-                opp_type = best_opportunity['type']
-                
-                quantity = balance / opp_price
-                
-                if opp_type == 'LONG':
-                    cost = quantity * opp_price
-                    positions[opp_ticker].append(
-                        (opp_price, quantity, 'LONG', current_time, i)
-                    )
+                if exit_price > entry_price:
+                    return_pct = (exit_price - entry_price) / entry_price
                     trades.append({
-                        'ticker': opp_ticker,
-                        'time': current_time,
-                        'minute': i,
-                        'action': 'OPEN_LONG',
-                        'entry_price': opp_price,
-                        'exit_price': None,
-                        'quantity': quantity,
-                        'profit_loss': 0,
-                        'balance_after': balance - cost
-                    })
-                    balance -= cost
-                else:
-                    margin = quantity * opp_price
-                    positions[opp_ticker].append(
-                        (opp_price, quantity, 'SHORT', current_time, i)
-                    )
-                    trades.append({
-                        'ticker': opp_ticker,
-                        'time': current_time,
-                        'minute': i,
-                        'action': 'OPEN_SHORT',
-                        'entry_price': opp_price,
-                        'exit_price': None,
-                        'quantity': quantity,
-                        'profit_loss': 0,
-                        'balance_after': balance - margin
-                    })
-                    balance -= margin
-    
-    if all_events:
-        last_event = all_events[-1]
-        final_price = last_event['close']
-        final_time = last_event['time']
-        
-        for ticker, ticker_positions in positions.items():
-            for entry_price, quantity, pos_type, _, _ in ticker_positions:
-                if pos_type == 'LONG':
-                    profit = quantity * (final_price - entry_price)
-                    balance += quantity * final_price
-                    trades.append({
-                        'ticker': ticker,
-                        'time': final_time,
-                        'minute': len(all_events) - 1,
-                        'action': 'CLOSE_LONG',
+                        'entry_idx': entry_global_idx,
+                        'exit_idx': exit_global_idx,
                         'entry_price': entry_price,
-                        'exit_price': final_price,
-                        'quantity': quantity,
-                        'profit_loss': profit,
-                        'balance_after': balance
-                    })
-                elif pos_type == 'SHORT':
-                    profit = quantity * (entry_price - final_price)
-                    balance += quantity * entry_price + profit
-                    trades.append({
+                        'exit_price': exit_price,
                         'ticker': ticker,
-                        'time': final_time,
-                        'minute': len(all_events) - 1,
-                        'action': 'CLOSE_SHORT',
+                        'type': 'LONG',
+                        'return': return_pct,
+                        'entry_time': entry_event['time'],
+                        'exit_time': exit_event['time']
+                    })
+                
+                if exit_price < entry_price:
+                    return_pct = (entry_price - exit_price) / entry_price
+                    trades.append({
+                        'entry_idx': entry_global_idx,
+                        'exit_idx': exit_global_idx,
                         'entry_price': entry_price,
-                        'exit_price': final_price,
-                        'quantity': quantity,
-                        'profit_loss': profit,
-                        'balance_after': balance
+                        'exit_price': exit_price,
+                        'ticker': ticker,
+                        'type': 'SHORT',
+                        'return': return_pct,
+                        'entry_time': entry_event['time'],
+                        'exit_time': exit_event['time']
                     })
     
-    achieved_target = balance >= target
-    return balance, trades, achieved_target
+    return trades, all_events
+
+
+def dp_optimal_trades(day_data, initial_balance=10000, target=1000000):
+    """
+    Use Dynamic Programming to find optimal sequence of non-overlapping trades.
+    
+    Algorithm:
+        dp[i] = maximum balance multiplier achievable starting from time index i
+        
+        For each time point i (from end to start):
+            Option 1: Skip this time point -> dp[i] = dp[i+1]
+            Option 2: Take a trade starting at i -> dp[i] = (1 + return) * dp[exit_idx]
+        
+        Choose the option with maximum multiplier.
+    
+    Time Complexity: O(T) where T = total number of trades (≤ N² × M)
+    Space Complexity: O(N + T)
+    
+    Returns:
+        final_balance: Maximum achievable balance
+        optimal_trades: List of trades in the optimal sequence
+        achieved_target: Whether $1M target was reached
+    """
+    trades, all_events = find_all_trades(day_data)
+    n = len(all_events)
+    
+    if n == 0:
+        return initial_balance, [], False
+    
+    trades_by_entry = {i: [] for i in range(n)}
+    for trade in trades:
+        trades_by_entry[trade['entry_idx']].append(trade)
+    
+    dp = [(1.0, None)] * (n + 1)
+    
+    for i in range(n - 1, -1, -1):
+        best_mult = dp[i + 1][0]
+        best_trade = None
+        
+        for trade in trades_by_entry[i]:
+            exit_idx = trade['exit_idx']
+            trade_mult = 1 + trade['return']
+            future_mult = dp[exit_idx][0] if exit_idx < n else 1.0
+            total_mult = trade_mult * future_mult
+            
+            if total_mult > best_mult:
+                best_mult = total_mult
+                best_trade = trade
+        
+        dp[i] = (best_mult, best_trade)
+    
+    optimal_trades = []
+    i = 0
+    while i < n:
+        _, trade = dp[i]
+        if trade is not None:
+            optimal_trades.append(trade)
+            i = trade['exit_idx']
+        else:
+            i += 1
+    
+    final_balance = initial_balance * dp[0][0]
+    achieved_target = final_balance >= target
+    
+    return final_balance, optimal_trades, achieved_target
+
+
+def format_trade_sequence(trades, initial_balance):
+    """Format trades into a readable sequence with running balance."""
+    formatted = []
+    balance = initial_balance
+    
+    for i, trade in enumerate(trades):
+        quantity = balance / trade['entry_price']
+        
+        if trade['type'] == 'LONG':
+            profit = quantity * (trade['exit_price'] - trade['entry_price'])
+        else:
+            profit = quantity * (trade['entry_price'] - trade['exit_price'])
+        
+        balance = balance * (1 + trade['return'])
+        
+        formatted.append({
+            'trade_num': i + 1,
+            'ticker': trade['ticker'],
+            'type': trade['type'],
+            'entry_time': trade['entry_time'],
+            'exit_time': trade['exit_time'],
+            'entry_price': trade['entry_price'],
+            'exit_price': trade['exit_price'],
+            'quantity': quantity,
+            'profit': profit,
+            'balance_after': balance
+        })
+    
+    return formatted
+
+
+def save_trade_sequence(trades, trading_date, result_dir):
+    """Save trade sequence to CSV file."""
+    if not trades:
+        return None
+    
+    sequences_dir = result_dir / 'trade_sequences'
+    sequences_dir.mkdir(exist_ok=True)
+    
+    df = pd.DataFrame(trades)
+    filename = sequences_dir / f'{trading_date}_trades.csv'
+    df.to_csv(filename, index=False)
+    
+    return filename
+
+
+def print_day_results(trading_date, final_balance, initial_balance, trades, achieved_target):
+    """Print formatted results for a single day."""
+    profit = final_balance - initial_balance
+    profit_pct = (profit / initial_balance) * 100
+    
+    print("=" * 80)
+    print(f"Day: {trading_date}")
+    print("=" * 80)
+    print(f"$1M Target Achievable: {'YES' if achieved_target else 'NO'}")
+    print(f"Maximum Profit: ${final_balance:,.2f} ({profit_pct:+.2f}%)")
+    print(f"Total Trades: {len(trades)}")
+    
+    if trades and len(trades) <= 20:
+        print("\nTrade Sequence (showing all):")
+        for t in trades:
+            print(f"  #{t['trade_num']:4d}  {t['type']:5s}  {t['ticker']:8s}  "
+                  f"${t['entry_price']:,.2f} → ${t['exit_price']:,.2f}  "
+                  f"+${t['profit']:,.2f}  Balance: ${t['balance_after']:,.2f}")
+    elif trades:
+        print(f"\nTrade Sequence (showing first 10 of {len(trades)}):")
+        for t in trades[:10]:
+            print(f"  #{t['trade_num']:4d}  {t['type']:5s}  {t['ticker']:8s}  "
+                  f"${t['entry_price']:,.2f} → ${t['exit_price']:,.2f}  "
+                  f"+${t['profit']:,.2f}  Balance: ${t['balance_after']:,.2f}")
+        print(f"  ... and {len(trades) - 10} more trades")
+    
+    print()
 
 
 def main():
-    """Main function to run per-day backtesting and generate CSV files."""
+    """Main function to run DP-optimal backtesting."""
     data_dir = "binance_december_data"
     initial_balance = 10000
     target_balance = 1000000
     start_date = date(2025, 12, 1)
     end_date = date(2025, 12, 31)
     
-    all_trades = []
-    daily_summaries = []
+    result_dir = Path("result")
+    result_dir.mkdir(exist_ok=True)
     
-    print("Running per-day backtesting...")
+    daily_summaries = []
+    days_achieved_target = []
+    
+    print("\n" + "=" * 80)
+    print("CRYPTOCURRENCY BACKTESTING - DYNAMIC PROGRAMMING OPTIMAL SOLUTION")
     print("=" * 80)
+    print(f"Initial Balance: ${initial_balance:,}")
+    print(f"Target: ${target_balance:,}")
+    print(f"Period: {start_date} to {end_date}")
+    print("=" * 80 + "\n")
     
     for trading_date in daterange(start_date, end_date):
-        print(f"\nProcessing {trading_date}...")
-        
         day_data = load_day_data(data_dir, trading_date)
         
         if not day_data:
-            print(f"  No data available for {trading_date}")
+            print(f"No data available for {trading_date}")
             continue
         
-        final_balance, trades, achieved_target = max_profit_per_day(
+        final_balance, optimal_trades, achieved_target = dp_optimal_trades(
             day_data, initial_balance, target_balance
         )
         
+        formatted_trades = format_trade_sequence(optimal_trades, initial_balance)
+        
+        save_trade_sequence(formatted_trades, trading_date, result_dir)
+        
+        print_day_results(trading_date, final_balance, initial_balance, 
+                         formatted_trades, achieved_target)
+        
         profit = final_balance - initial_balance
         profit_pct = (profit / initial_balance) * 100
-        
-        for trade in trades:
-            trade['date'] = trading_date
-        
-        all_trades.extend(trades)
         
         daily_summaries.append({
             'date': trading_date,
@@ -330,45 +304,41 @@ def main():
             'final_balance': final_balance,
             'profit_loss': profit,
             'profit_pct': profit_pct,
-            'total_trades': len(trades),
-            'achieved_1m_target': achieved_target,
-            'tickers_traded': len(set(trade['ticker'] for trade in trades))
+            'total_trades': len(optimal_trades),
+            'achieved_1m_target': achieved_target
         })
         
-        print(f"  Final balance: ${final_balance:,.2f}")
-        print(f"  Profit: ${profit:,.2f} ({profit_pct:+.2f}%)")
-        print(f"  Total trades: {len(trades)}")
-        print(f"  Achieved $1M target: {'YES' if achieved_target else 'NO'}")
-    
-    print("\n" + "=" * 80)
-    print("Generating CSV files...")
-    
-    result_dir = Path("result")
-    result_dir.mkdir(exist_ok=True)
-    
-    if all_trades:
-        trades_df = pd.DataFrame(all_trades)
-        trades_df = trades_df.sort_values(['date', 'minute'])
-        trades_csv = result_dir / 'all_trades_per_day.csv'
-        trades_df.to_csv(trades_csv, index=False)
-        print(f"  Created: {trades_csv} ({len(trades_df)} trades)")
+        if achieved_target:
+            days_achieved_target.append(trading_date)
     
     if daily_summaries:
         summary_df = pd.DataFrame(daily_summaries)
         summary_csv = result_dir / 'daily_results_summary.csv'
         summary_df.to_csv(summary_csv, index=False)
-        print(f"  Created: {summary_csv} ({len(summary_df)} days)")
-        
-        print("\n" + "=" * 80)
-        print("SUMMARY STATISTICS:")
-        achieved_count = summary_df['achieved_1m_target'].sum()
-        max_profit = summary_df['profit_loss'].max()
-        avg_profit = summary_df['profit_loss'].mean()
-        print(f"  Days that achieved $1M target: {achieved_count}")
-        print(f"  Maximum profit in a day: ${max_profit:,.2f}")
-        print(f"  Average profit per day: ${avg_profit:,.2f}")
-        print(f"  Total trades across all days: {len(all_trades)}")
     
+    print("=" * 80)
+    print("FINAL SUMMARY")
+    print("=" * 80)
+    
+    if days_achieved_target:
+        print(f"\n$1M TARGET ACHIEVED ON {len(days_achieved_target)} DAY(S):")
+        for d in days_achieved_target:
+            print(f"  - {d}")
+    else:
+        print("\n$1M TARGET: NOT ACHIEVABLE in any single day")
+    
+    if daily_summaries:
+        max_profit = max(s['profit_loss'] for s in daily_summaries)
+        max_profit_day = [s['date'] for s in daily_summaries if s['profit_loss'] == max_profit][0]
+        avg_profit = sum(s['profit_loss'] for s in daily_summaries) / len(daily_summaries)
+        
+        print(f"\nMaximum single-day profit: ${max_profit:,.2f} on {max_profit_day}")
+        print(f"Average daily profit: ${avg_profit:,.2f}")
+        print(f"Total days analyzed: {len(daily_summaries)}")
+    
+    print(f"\nResults saved to: {result_dir}/")
+    print(f"  - daily_results_summary.csv")
+    print(f"  - trade_sequences/*.csv")
     print("\nDone!")
 
 

@@ -1,0 +1,103 @@
+================================================================================
+ASSUMPTIONS FOR BACKTESTING SOLUTION
+================================================================================
+
+This document lists all assumptions made in the backtesting implementation.
+
+--------------------------------------------------------------------------------
+1. TRADING CONSTRAINTS
+--------------------------------------------------------------------------------
+
+1.1 Sequential Trading
+    - Only ONE position can be open at a time
+    - Must close current position before opening a new one
+    - Interpretation: "a sequence of trades" = sequential, not parallel
+
+1.2 Full Capital Deployment
+    - Each trade uses 100% of available balance
+    - No partial position sizing
+
+1.3 Single Day Evaluation
+    - Each day is evaluated independently
+    - Starting balance: $10,000 fresh each day
+    - No carry-over of balance between days
+
+1.4 Trade Execution
+    - Trades execute at the 'close' price of each 1-minute candle
+    - Instant execution assumed (no slippage)
+    - Can enter and exit at the same minute (on different tickers)
+
+--------------------------------------------------------------------------------
+2. MARKET CONDITIONS
+--------------------------------------------------------------------------------
+
+2.1 No Trading Fees
+    - Zero commission on all trades
+    - No spread costs
+
+2.2 Unlimited Liquidity
+    - Can buy/sell any amount at the quoted price
+    - No market impact
+
+2.3 Perfect Knowledge
+    - Full knowledge of all future prices within the day
+    - Prices are known from minute 0 to minute 1439
+
+--------------------------------------------------------------------------------
+3. POSITION TYPES
+--------------------------------------------------------------------------------
+
+3.1 Long Positions
+    - Buy asset, profit when price increases
+    - Profit = quantity × (exit_price - entry_price)
+
+3.2 Short Positions
+    - Sell asset (borrow), profit when price decreases
+    - Profit = quantity × (entry_price - exit_price)
+    - No borrowing costs or margin requirements
+
+--------------------------------------------------------------------------------
+4. DATA INTERPRETATION
+--------------------------------------------------------------------------------
+
+4.1 Price Data
+    - Using 1-minute Binance futures klines
+    - 'close' price used for all calculations
+    - Data covers December 1-31, 2025
+
+4.2 Available Tickers
+    - BTCUSDT (Bitcoin)
+    - ETHUSDT (Ethereum)
+    - BNBUSDT (Binance Coin)
+
+--------------------------------------------------------------------------------
+5. TARGET INTERPRETATION
+--------------------------------------------------------------------------------
+
+5.1 $1M Target
+    - Goal: Determine if $10,000 → $1,000,000 is achievable
+    - Evaluation period: Single 24-hour day
+    - If achievable: Print the sequence of trades
+
+5.2 Maximum Profit
+    - Secondary goal: Find maximum achievable profit
+    - Report the optimal trade sequence regardless of $1M achievement
+
+--------------------------------------------------------------------------------
+6. ALGORITHM CHOICE
+--------------------------------------------------------------------------------
+
+6.1 Dynamic Programming Selected
+    - Finds globally optimal solution
+    - Better than greedy approach (16x improvement observed)
+    - Trade-off: Higher computational cost O(N² × M)
+
+6.2 Why Not Greedy?
+    - Greedy picks best immediate trade
+    - Misses compounding opportunities from shorter trades
+    - Example: 10 trades at 3% each = 34% total > single 10% trade
+
+================================================================================
+END OF ASSUMPTIONS
+================================================================================
+

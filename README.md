@@ -1,15 +1,17 @@
 # Cryptocurrency Trading Backtesting
 
-A backtesting system that simulates crypto trading with **perfect knowledge** of future prices. Tests whether $10K can become $1M through optimal trading.
+A backtesting system that finds the **optimal sequence of trades** using Dynamic Programming, given perfect knowledge of future prices. Tests whether $10K can become $1M in a 24-hour period.
 
 ## Quick Start
 
 **Using Cursor IDE** (recommended):
+
 ```
 Open project in Cursor → Chat → Say "setup the project"
 ```
 
 **Manual setup**:
+
 ```bash
 python3 -m venv .venv && source .venv/bin/activate
 pip install -r requirements.txt
@@ -19,46 +21,111 @@ python backtesting.py    # Run backtest
 
 ## Results
 
-| Metric | Value |
-|--------|-------|
-| Average daily profit | ~$898 (+9%) |
-| Best single day | ~$1,695 (+17%) |
-| 31-day compounded | ~$141K |
-| **$1M target reached?** | **No** |
+| Metric                  | Value            |
+| ----------------------- | ---------------- |
+| Average daily profit    | ~$14,329 (+143%) |
+| Best single day         | ~$36,673 (+267%) |
+| **$1M target reached?** | **No**           |
 
-**Key finding**: Even with perfect knowledge of all future prices, market volatility limits daily returns to ~5-17%. The $1M target requires ~54 more days of compounding.
+**Key finding**: Even with perfect knowledge and optimal trade sequencing, the maximum achievable in a single day is ~$36K. The $1M target is not achievable within any 24-hour window in December 2025.
 
 ## Algorithm
 
-The backtesting uses a **greedy optimization** strategy with perfect future knowledge:
+### Dynamic Programming Approach
 
-1. **Data preparation**: Loads 1-minute Binance futures data for BTC, ETH, and BNB. Precomputes suffix arrays storing the maximum and minimum future prices from each time point.
+The algorithm finds the **globally optimal sequence of non-overlapping trades**.
 
-2. **Opportunity detection**: At each minute, evaluates all tickers to find the best long (buy low, sell at future max) or short (sell high, buy at future min) opportunity based on expected return.
+**Key insight**: A greedy approach (picking the best trade at each moment) is suboptimal. Multiple smaller trades with compounding can outperform fewer larger trades.
 
-3. **Position management**: Opens the highest-return position using full available balance. Closes positions when the current price equals the optimal exit point (peak for longs, bottom for shorts).
+#### How It Works
 
-4. **Trade execution**: Processes ~4,320 price events per day (1,440 minutes × 3 tickers), generating trade logs and daily summaries.
+1. **Find all possible trades**: For each ticker, enumerate all profitable (entry, exit) pairs
 
-## Files
+   - LONG: Buy at time i, sell at time j where price[j] > price[i]
+   - SHORT: Sell at time i, buy at time j where price[j] < price[i]
 
-| File | Purpose |
-|------|---------|
-| `pull_data.py` | Downloads Binance klines data |
-| `backtesting.py` | Main backtesting engine |
-| `check_30day.py` | Analyzes compounding returns |
-| `result/*.csv` | Generated trade logs and summaries |
+2. **Dynamic Programming**:
+
+   ```
+   dp[i] = maximum balance multiplier achievable from time i to end of day
+
+   For each time i (backwards from end):
+     Option 1: Skip → dp[i] = dp[i+1]
+     Option 2: Take trade → dp[i] = (1 + return) × dp[exit_time]
+
+   Answer: initial_balance × dp[0]
+   ```
+
+3. **Reconstruct optimal sequence**: Backtrack through DP to get the actual trades
+
+### Time Complexity
+
+| Phase             | Complexity    | Description                          |
+| ----------------- | ------------- | ------------------------------------ |
+| Find all trades   | O(N² × M)     | N = minutes (~1440), M = tickers (3) |
+| Build trade index | O(T)          | T = total trades                     |
+| DP computation    | O(N + T)      | One pass through time points         |
+| **Overall**       | **O(N² × M)** | ~6.2M operations per day             |
+
+### Space Complexity
+
+| Component   | Complexity    |
+| ----------- | ------------- |
+| All trades  | O(N² × M)     |
+| DP array    | O(N)          |
+| **Overall** | **O(N² × M)** |
 
 ## Output
 
 After running `backtesting.py`:
-- `result/all_trades_per_day.csv` - All executed trades
-- `result/daily_results_summary.csv` - Daily P&L summary
 
-Run `python check_30day.py` to see compounding analysis.
+```
+result/
+├── daily_results_summary.csv    # Summary for all days
+└── trade_sequences/
+    ├── 2025-12-01_trades.csv    # Detailed trades for each day
+    ├── 2025-12-02_trades.csv
+    └── ...
+```
+
+### Console Output Format
+
+```
+================================================================================
+Day: 2025-12-01
+================================================================================
+$1M Target Achievable: NO
+Maximum Profit: $36,673.01 (+266.73%)
+Total Trades: 1,227
+
+Trade Sequence (showing first 10 of 1,227):
+  #   1  SHORT  ETHUSDT   $2,996.46 → $2,991.66  +$16.02  Balance: $10,016.02
+  #   2  SHORT  BTCUSDT   $90,264.80 → $90,159.20  +$11.72  Balance: $10,027.74
+  ...
+```
+
+## Files
+
+| File              | Purpose                       |
+| ----------------- | ----------------------------- |
+| `backtesting.py`  | Main DP backtesting engine    |
+| `pull_data.py`    | Downloads Binance klines data |
+| `check_30day.py`  | Analyzes compounding returns  |
+| `assumptions.txt` | Documents assumptions made    |
+
+## Comparison: Greedy vs DP
+
+| Approach | Avg Daily Profit    | Strategy                          |
+| -------- | ------------------- | --------------------------------- |
+| Greedy   | $898 (+9%)          | Best single trade at each moment  |
+| **DP**   | **$14,329 (+143%)** | Optimal sequence with compounding |
+
+The DP solution achieves **16x better returns** by finding many smaller trades that compound.
 
 ## Notes
 
 - Uses perfect future knowledge (not realistic trading)
 - No fees, unlimited liquidity assumed
-- Educational/interview project
+- Sequential trades only (one position at a time)
+- Each day starts fresh with $10,000
+- See `assumptions.txt` for full list of assumptions
