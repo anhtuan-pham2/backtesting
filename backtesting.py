@@ -8,15 +8,7 @@ from load_data import load_data
 
 
 def daterange(start_date, end_date):
-    """Generate date range from start to end (inclusive).
-    
-    Args:
-        start_date: Starting date
-        end_date: Ending date
-        
-    Yields:
-        Date objects from start_date to end_date (inclusive)
-    """
+    """Generate date range from start to end (inclusive)."""
     current = start_date
     while current <= end_date:
         yield current
@@ -24,16 +16,7 @@ def daterange(start_date, end_date):
 
 
 def load_day_data(data_dir, trading_date):
-    """
-    Load data for a specific day across all tickers.
-    
-    Args:
-        data_dir: Path to data directory
-        trading_date: Date object for the trading day
-        
-    Returns:
-        Dictionary with ticker as key and DataFrame as value for that day
-    """
+    """Load data for a specific day across all tickers."""
     data_dir = Path(data_dir)
     day_data = {}
     
@@ -57,31 +40,35 @@ def load_day_data(data_dir, trading_date):
     return day_data
 
 
+def precompute_suffix_arrays(ticker_events):
+    """Precompute suffix max and min arrays for future price lookups."""
+    n = len(ticker_events)
+    if n == 0:
+        return [], []
+    
+    suffix_max = [0.0] * n
+    suffix_min = [float('inf')] * n
+    
+    suffix_max[n - 1] = 0.0
+    suffix_min[n - 1] = float('inf')
+    
+    for i in range(n - 2, -1, -1):
+        next_price = ticker_events[i + 1]['close']
+        suffix_max[i] = max(next_price, suffix_max[i + 1])
+        suffix_min[i] = min(next_price, suffix_min[i + 1])
+    
+    return suffix_max, suffix_min
+
+
 def max_profit_per_day(day_data, initial_balance=10000, target=1000000):
     """
     Calculate maximum profit for a single day with Long/Short positions.
     Uses perfect knowledge to find optimal trades across all assets.
-    
-    Strategy: With perfect knowledge of all future prices:
-    1. Find all profitable opportunities across all assets
-    2. Execute trades optimally, allowing multiple simultaneous positions
-    3. Close positions at optimal exit points
-    
-    Args:
-        day_data: Dictionary of {ticker: DataFrame} for the day
-        initial_balance: Starting balance
-        target: Target balance to achieve
-        
-    Returns:
-        tuple: (final_balance, all_trades, achieved_target)
     """
     balance = initial_balance
     trades = []
-    
-    # Track open positions: {ticker: [(entry_price, quantity, type, entry_time, entry_minute), ...]}
     positions = {ticker: [] for ticker in day_data.keys()}
     
-    # Get all price points across all tickers, sorted by time
     all_events = []
     for ticker, df in day_data.items():
         for idx, row in df.iterrows():
@@ -95,21 +82,28 @@ def max_profit_per_day(day_data, initial_balance=10000, target=1000000):
                 'close': row['close']
             })
     
-    # Sort by time
     all_events.sort(key=lambda x: x['time'])
     
-    # Build price sequences for each ticker
     ticker_events = {}
     for ticker in day_data.keys():
         ticker_events[ticker] = [e for e in all_events if e['ticker'] == ticker]
     
-    # Process each minute across all tickers
+    ticker_time_to_idx = {}
+    for ticker, events in ticker_events.items():
+        ticker_time_to_idx[ticker] = {e['time']: i for i, e in enumerate(events)}
+    
+    ticker_suffix_max = {}
+    ticker_suffix_min = {}
+    for ticker, events in ticker_events.items():
+        suffix_max, suffix_min = precompute_suffix_arrays(events)
+        ticker_suffix_max[ticker] = suffix_max
+        ticker_suffix_min[ticker] = suffix_min
+    
     for i, event in enumerate(all_events):
         ticker = event['ticker']
         current_price = event['close']
         current_time = event['time']
         
-        # Close existing positions for this ticker if optimal
         positions_to_close = []
         for pos_idx, (entry_price, quantity, pos_type, _, _) in enumerate(
             positions[ticker]
@@ -117,39 +111,24 @@ def max_profit_per_day(day_data, initial_balance=10000, target=1000000):
             should_close = False
             profit = 0
             
-            # Find best future price for this ticker to decide if we should close now
-            ticker_future = ticker_events[ticker]
-            current_ticker_idx = next(
-                (j for j, e in enumerate(ticker_future)
-                 if e['time'] == current_time),
-                None
-            )
+            current_ticker_idx = ticker_time_to_idx[ticker].get(current_time)
             
-            if current_ticker_idx is not None and current_ticker_idx < len(ticker_future) - 1:
-                # Check if there's a better exit point in the future
-                future_prices = [e['close'] for e in ticker_future[current_ticker_idx + 1:]]
+            if current_ticker_idx is not None and current_ticker_idx < len(ticker_events[ticker]) - 1:
+                max_future_price = ticker_suffix_max[ticker][current_ticker_idx]
+                min_future_price = ticker_suffix_min[ticker][current_ticker_idx]
                 
                 if pos_type == 'LONG':
-                    max_future_price = (
-                        max(future_prices) if future_prices else current_price
-                    )
-                    # Close if current price is the peak or if we've reached target
                     if (current_price >= max_future_price or
                             balance + quantity * current_price >= target):
                         profit = quantity * (current_price - entry_price)
                         should_close = True
                 elif pos_type == 'SHORT':
-                    min_future_price = (
-                        min(future_prices) if future_prices else current_price
-                    )
-                    # Close if current price is the bottom or if we've reached target
                     short_profit = quantity * (entry_price - current_price)
                     if (current_price <= min_future_price or
                             balance + quantity * entry_price + short_profit >= target):
                         profit = short_profit
                         should_close = True
             else:
-                # Last price point, close position
                 if pos_type == 'LONG':
                     profit = quantity * (current_price - entry_price)
                 else:
@@ -159,7 +138,7 @@ def max_profit_per_day(day_data, initial_balance=10000, target=1000000):
             if should_close:
                 if pos_type == 'LONG':
                     balance += quantity * current_price
-                else:  # SHORT
+                else:
                     balance += quantity * entry_price + profit
                 
                 trades.append({
@@ -175,13 +154,10 @@ def max_profit_per_day(day_data, initial_balance=10000, target=1000000):
                 })
                 positions_to_close.append(pos_idx)
         
-        # Remove closed positions
         for pos_idx in sorted(positions_to_close, reverse=True):
             positions[ticker].pop(pos_idx)
         
-        # Check if we've reached target
         if balance >= target:
-            # Close all remaining positions
             for ticker_pos in positions.values():
                 for entry_price, quantity, pos_type, _, _ in ticker_pos:
                     if pos_type == 'LONG':
@@ -191,36 +167,22 @@ def max_profit_per_day(day_data, initial_balance=10000, target=1000000):
                         balance += quantity * entry_price + profit
             break
         
-        # Find best opportunity across ALL tickers at this moment
-        # With perfect knowledge, find the best trade from current time to end of day
         if balance > 0:
             best_opportunity = None
             best_return = 0
             
-            # Check all tickers for best opportunity from current time onwards
             for check_ticker in day_data.keys():
-                ticker_future = ticker_events[check_ticker]
-                current_ticker_idx = next(
-                    (j for j, e in enumerate(ticker_future)
-                     if e['time'] == current_time),
-                    None
-                )
+                current_ticker_idx = ticker_time_to_idx[check_ticker].get(current_time)
                 
                 if (current_ticker_idx is not None and
-                        current_ticker_idx < len(ticker_future) - 1):
-                    # Get the current price for THIS ticker at this time
-                    ticker_price = ticker_future[current_ticker_idx]['close']
-                    future_events = ticker_future[current_ticker_idx + 1:]
-                    future_prices = [e['close'] for e in future_events]
+                        current_ticker_idx < len(ticker_events[check_ticker]) - 1):
+                    ticker_price = ticker_events[check_ticker][current_ticker_idx]['close']
                     
-                    if not future_prices:
-                        continue
+                    max_future_price = ticker_suffix_max[check_ticker][current_ticker_idx]
+                    min_future_price = ticker_suffix_min[check_ticker][current_ticker_idx]
                     
-                    # Find best LONG opportunity: buy now, sell at max future price
-                    max_future_price = max(future_prices)
                     if max_future_price > ticker_price:
-                        long_return = ((max_future_price - ticker_price) /
-                                       ticker_price)
+                        long_return = (max_future_price - ticker_price) / ticker_price
                         if long_return > best_return:
                             best_return = long_return
                             best_opportunity = {
@@ -232,11 +194,8 @@ def max_profit_per_day(day_data, initial_balance=10000, target=1000000):
                                 'time': current_time
                             }
                     
-                    # Find best SHORT opportunity: short now, cover at min price
-                    min_future_price = min(future_prices)
                     if min_future_price < ticker_price:
-                        short_return = ((ticker_price - min_future_price) /
-                                        ticker_price)
+                        short_return = (ticker_price - min_future_price) / ticker_price
                         if short_return > best_return:
                             best_return = short_return
                             best_opportunity = {
@@ -248,8 +207,6 @@ def max_profit_per_day(day_data, initial_balance=10000, target=1000000):
                                 'time': current_time
                             }
             
-            # Execute best opportunity if found
-            # Allow opening new positions even if we have existing ones
             if best_opportunity and best_return > 0:
                 opp_ticker = best_opportunity['ticker']
                 opp_price = best_opportunity['price']
@@ -274,7 +231,7 @@ def max_profit_per_day(day_data, initial_balance=10000, target=1000000):
                         'balance_after': balance - cost
                     })
                     balance -= cost
-                else:  # SHORT
+                else:
                     margin = quantity * opp_price
                     positions[opp_ticker].append(
                         (opp_price, quantity, 'SHORT', current_time, i)
@@ -292,7 +249,6 @@ def max_profit_per_day(day_data, initial_balance=10000, target=1000000):
                     })
                     balance -= margin
     
-    # Close all remaining positions at the end
     if all_events:
         last_event = all_events[-1]
         final_price = last_event['close']
@@ -341,7 +297,6 @@ def main():
     start_date = date(2025, 12, 1)
     end_date = date(2025, 12, 31)
     
-    # Storage for results
     all_trades = []
     daily_summaries = []
     
@@ -351,14 +306,12 @@ def main():
     for trading_date in daterange(start_date, end_date):
         print(f"\nProcessing {trading_date}...")
         
-        # Load day data
         day_data = load_day_data(data_dir, trading_date)
         
         if not day_data:
             print(f"  No data available for {trading_date}")
             continue
         
-        # Calculate max profit for the day
         final_balance, trades, achieved_target = max_profit_per_day(
             day_data, initial_balance, target_balance
         )
@@ -366,13 +319,11 @@ def main():
         profit = final_balance - initial_balance
         profit_pct = (profit / initial_balance) * 100
         
-        # Add date to trades
         for trade in trades:
             trade['date'] = trading_date
         
         all_trades.extend(trades)
         
-        # Daily summary
         daily_summaries.append({
             'date': trading_date,
             'initial_balance': initial_balance,
@@ -389,15 +340,12 @@ def main():
         print(f"  Total trades: {len(trades)}")
         print(f"  Achieved $1M target: {'YES' if achieved_target else 'NO'}")
     
-    # Generate CSV files
     print("\n" + "=" * 80)
     print("Generating CSV files...")
     
-    # Create result directory
     result_dir = Path("result")
     result_dir.mkdir(exist_ok=True)
     
-    # All trades CSV
     if all_trades:
         trades_df = pd.DataFrame(all_trades)
         trades_df = trades_df.sort_values(['date', 'minute'])
@@ -405,14 +353,12 @@ def main():
         trades_df.to_csv(trades_csv, index=False)
         print(f"  Created: {trades_csv} ({len(trades_df)} trades)")
     
-    # Daily summary CSV
     if daily_summaries:
         summary_df = pd.DataFrame(daily_summaries)
         summary_csv = result_dir / 'daily_results_summary.csv'
         summary_df.to_csv(summary_csv, index=False)
         print(f"  Created: {summary_csv} ({len(summary_df)} days)")
         
-        # Print summary statistics
         print("\n" + "=" * 80)
         print("SUMMARY STATISTICS:")
         achieved_count = summary_df['achieved_1m_target'].sum()
