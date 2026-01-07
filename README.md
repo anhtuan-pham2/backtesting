@@ -20,6 +20,7 @@ This project implements a backtesting engine that:
 - **Daily Analysis**: Calculates maximum profit achievable per day
 - **Compounding Analysis**: Tracks cumulative returns over multiple days
 - **Comprehensive Reporting**: Generates detailed CSV reports of all trades and daily summaries
+- **AI-Powered Setup**: Use Cursor AI to automatically set up the entire project with one prompt
 
 ## Project Structure
 
@@ -31,6 +32,8 @@ This project implements a backtesting engine that:
 ├── check_30day.py        # 30-day compounding analysis
 ├── requirements.txt      # Python dependencies
 ├── README.md            # This file
+├── SETUP_PROMPT.md      # Cursor AI setup prompt
+├── .cursorrules         # Cursor IDE rules
 ├── .gitignore           # Git ignore rules
 ├── binance_december_data/  # Downloaded data (gitignored - run pull_data.py)
 │   ├── BTCUSDT/
@@ -120,15 +123,53 @@ The backtesting algorithm has the following time complexity:
 - Single day: ~1-5 seconds (actual: ~2-3 seconds)
 - Full 31 days: ~60-150 seconds (actual: ~60-90 seconds on modern hardware)
 
-## Installation
+## Quick Start (Using Cursor AI)
+
+**🚀 Easiest way to set up:** If you're using Cursor IDE:
+
+1. **Clone the repository:**
+   ```bash
+   git clone https://github.com/anhtuan-pham2/backtesting.git
+   cd backtesting
+   ```
+
+2. **Open the project in Cursor IDE**
+
+3. **Open `SETUP_PROMPT.md`** and copy the entire prompt
+
+4. **Paste the prompt into Cursor's chat** (Cmd/Ctrl + L)
+
+5. **Cursor will automatically:**
+   - Create necessary folders (`binance_december_data/` and `result/`)
+   - Set up virtual environment (`.venv/`)
+   - Install all dependencies from `requirements.txt`
+   - Download all required Binance data (93 files)
+   - Verify the setup is complete
+
+6. **Once setup is complete, run:**
+   ```bash
+   python backtesting.py
+   ```
+
+That's it! The entire project will be set up automatically. No manual steps required.
+
+## Manual Installation
+
+If you prefer manual setup or aren't using Cursor:
 
 1. **Clone or download this repository:**
 ```bash
-git clone <repository-url>
-cd Interview
+git clone https://github.com/anhtuan-pham2/backtesting.git
+cd backtesting
 ```
 
-2. **Create a virtual environment (recommended):**
+2. **Create the necessary directories:**
+```bash
+mkdir binance_december_data
+mkdir result
+```
+
+3. **Create a virtual environment (recommended):**
 ```bash
 python -m venv .venv
 .venv\Scripts\Activate.ps1  # Windows PowerShell
@@ -136,7 +177,7 @@ python -m venv .venv
 source .venv/bin/activate    # Linux/Mac
 ```
 
-3. **Install dependencies:**
+4. **Install dependencies:**
 ```bash
 pip install -r requirements.txt
 ```
@@ -145,7 +186,9 @@ pip install -r requirements.txt
 
 ## Usage
 
-### Step 1: Download Data
+### Step 1: Download Data (Manual Setup Only)
+
+**Note:** If you used the Cursor setup prompt, skip this step - data is already downloaded!
 
 **Important:** The `binance_december_data/` folder is not included in the repository (see `.gitignore`). You must download the data first.
 
