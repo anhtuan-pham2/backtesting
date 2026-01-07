@@ -1,35 +1,47 @@
 # Cursor Rules for Backtesting Project
 
-## Project Setup Commands
+## Project Setup
 
-When setting up this project, execute these commands in order:
+When the user asks to "setup", "set up the project", "follow setup", "initialize", or similar:
 
-1. **Create directories:**
+1. **Check if `.venv` exists** - if not, create it:
    ```bash
-   mkdir -p binance_december_data
-   mkdir -p result
+   python3 -m venv .venv
    ```
 
-2. **Set up virtual environment:**
+2. **Activate and install dependencies**:
    ```bash
-   python -m venv .venv
-   .venv\Scripts\Activate.ps1  # Windows
-   # or
-   source .venv/bin/activate    # Linux/Mac
+   source .venv/bin/activate  # Mac/Linux
+   # or: .venv\Scripts\Activate.ps1  # Windows
    pip install -r requirements.txt
    ```
 
-3. **Download data:**
+3. **Download market data** (93 files, ~5 min):
    ```bash
    python pull_data.py
    ```
 
-4. **Run backtesting:**
+4. **Run backtesting**:
    ```bash
    python backtesting.py
    ```
 
+5. **Verify setup is complete**:
+   - `binance_december_data/` contains 3 folders (BTCUSDT, ETHUSDT, BNBUSDT) with 31 CSV files each
+   - `result/` contains `all_trades_per_day.csv` and `daily_results_summary.csv`
+
+6. **Report success** with summary of:
+   - Number of data files downloaded (93)
+   - Backtesting results generated
+   - Key statistics (avg daily profit, best day, total trades)
+
 ## Project Structure
-- `binance_december_data/` - Downloaded market data (gitignored)
-- `result/` - Generated CSV results (gitignored)
-- Source files should be committed to git
+
+- `binance_december_data/` - Downloaded market data (gitignored, created by pull_data.py)
+- `result/` - Generated CSV results (gitignored, created by backtesting.py)
+- `.venv/` - Python virtual environment (gitignored)
+
+## Running Analysis
+
+- `python backtesting.py` - Run backtesting on all 31 days
+- `python check_30day.py` - Analyze 30-day compounding returns
