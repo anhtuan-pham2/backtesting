@@ -5,43 +5,58 @@
 When the user asks to "setup", "set up the project", "follow setup", "initialize", or similar:
 
 1. **Check if `.venv` exists** - if not, create it:
+
    ```bash
    python3 -m venv .venv
    ```
 
 2. **Activate and install dependencies**:
+
    ```bash
    source .venv/bin/activate  # Mac/Linux
    # or: .venv\Scripts\Activate.ps1  # Windows
    pip install -r requirements.txt
    ```
 
-3. **Download market data** (93 files, ~5 min):
+3. **Download market data** (93 files):
+
    ```bash
    python pull_data.py
    ```
 
 4. **Run backtesting**:
+
    ```bash
    python backtesting.py
    ```
 
-5. **Verify setup is complete**:
-   - `binance_december_data/` contains 3 folders (BTCUSDT, ETHUSDT, BNBUSDT) with 31 CSV files each
-   - `result/` contains `all_trades_per_day.csv` and `daily_results_summary.csv`
+5. **Run tests** (validates algorithm with VectorBT):
 
-6. **Report success** with summary of:
+   ```bash
+   python -m unittest backtesting_test -v
+   ```
+
+6. **Verify setup is complete**:
+
+   - `binance_december_data/` contains 3 folders (BTCUSDT, ETHUSDT, BNBUSDT) with 31 CSV files each
+   - `result/` contains `daily_results_summary.csv` and `trade_sequences/` folder
+   - All 37 tests pass
+
+7. **Report success** with summary of:
    - Number of data files downloaded (93)
    - Backtesting results generated
    - Key statistics (avg daily profit, best day, total trades)
+   - Test results (37 tests passed)
 
 ## Project Structure
 
 - `binance_december_data/` - Downloaded market data (gitignored, created by pull_data.py)
 - `result/` - Generated CSV results (gitignored, created by backtesting.py)
 - `.venv/` - Python virtual environment (gitignored)
+- `.github/workflows/` - CI/CD configuration (runs tests on every PR)
 
-## Running Analysis
+## Running Commands
 
 - `python backtesting.py` - Run backtesting on all 31 days
+- `python -m unittest backtesting_test -v` - Run validation tests
 - `python check_30day.py` - Analyze 30-day compounding returns

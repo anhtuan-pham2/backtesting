@@ -1,5 +1,7 @@
 # Cryptocurrency Trading Backtesting
 
+[![Tests](https://github.com/anhtuan-pham2/backtesting/actions/workflows/test.yml/badge.svg)](https://github.com/anhtuan-pham2/backtesting/actions/workflows/test.yml)
+
 A backtesting system that finds the **optimal sequence of trades** using Dynamic Programming, given perfect knowledge of future prices. Tests whether $10K can become $1M in a 24-hour period.
 
 ## Quick Start
@@ -15,8 +17,9 @@ Open project in Cursor → Chat → Say "setup the project"
 ```bash
 python3 -m venv .venv && source .venv/bin/activate
 pip install -r requirements.txt
-python pull_data.py      # Download data (~5 min)
+python pull_data.py      # Download data
 python backtesting.py    # Run backtest
+python -m unittest backtesting_test -v  # Run tests (optional)
 ```
 
 ## Results
@@ -106,12 +109,13 @@ Trade Sequence (showing first 10 of 1,227):
 
 ## Files
 
-| File              | Purpose                       |
-| ----------------- | ----------------------------- |
-| `backtesting.py`  | Main DP backtesting engine    |
-| `pull_data.py`    | Downloads Binance klines data |
-| `check_30day.py`  | Analyzes compounding returns  |
-| `assumptions.txt` | Documents assumptions made    |
+| File                  | Purpose                         |
+| --------------------- | ------------------------------- |
+| `backtesting.py`      | Main DP backtesting engine      |
+| `backtesting_test.py` | Validation tests using VectorBT |
+| `pull_data.py`        | Downloads Binance klines data   |
+| `check_30day.py`      | Analyzes compounding returns    |
+| `assumptions.txt`     | Documents assumptions made      |
 
 ## Comparison: Greedy vs DP
 
